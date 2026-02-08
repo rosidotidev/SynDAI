@@ -1,0 +1,27 @@
+I need a new crew with these Agents
+
+Data Schema analyzer
+- evaluate user request
+- able to read a ddl schema and extract maningful information about the schema ti prodiuce syuntetrica data.
+It has to
+1) extract table dependencies
+2) order of tables to produce insert statements to respect dependency
+3) extract sequence belonging to tables
+4) variables to be declared to initialize id values to be used both as id and both as foreign key to respect
+referential integrity; variables have to obtain values from sequence
+5) describe the suggested plan to produce the right result for the user request
+
+Data Script planner
+able to receive info from Data Schema Reader and define a list of sql statements with these features
+1) Declare variables
+2) assign correct value to the variables extracting the value from the related sequence
+3) evaluate fields that can be parametrized using jinja2 notation {{parameter}}
+4) produce insert statement using right ID, foreign keys and parametrized values
+
+Python Sql Expert
+Able to produce a python programm that uses only string e file libraries to generate a sql text file containing
+the script required by the user. to produce the python code it uses
+1) uses instructions received by the Data Script planner
+2) uses instructions received by the user
+3) uses all the tool that it has to fill the jinja2 variables
+

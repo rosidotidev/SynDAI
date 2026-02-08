@@ -1,0 +1,35 @@
+CREATE SEQUENCE CityID_Sequence
+    START WITH 1
+    INCREMENT BY 1
+    MINVALUE 1
+    NO MAXVALUE;
+GO
+
+CREATE SEQUENCE PeopleID_Sequence
+    START WITH 100
+    INCREMENT BY 1
+    MINVALUE 100
+    NO MAXVALUE;
+GO
+
+CREATE TABLE CITY (
+    id INT PRIMARY KEY,
+    city_name NVARCHAR(100) NOT NULL,
+    city_code INT UNIQUE NOT NULL,
+    residents INT
+);
+GO
+
+CREATE TABLE PEOPLE (
+    id INT PRIMARY KEY,
+    first_name NVARCHAR(50) NOT NULL,
+    last_name NVARCHAR(50) NOT NULL,
+    age INT,
+    id_city INT NOT NULL,
+    CONSTRAINT FK_People_City
+        FOREIGN KEY (id_city)
+        REFERENCES CITY(id)
+        ON DELETE CASCADE
+        ON UPDATE NO ACTION
+);
+GO

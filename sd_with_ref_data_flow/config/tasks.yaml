@@ -1,0 +1,316 @@
+# tasks.yaml - Flow Approach
+
+# ----------------------------------------------------------------------------------
+# TASK 1: task_analyze_schema
+# ----------------------------------------------------------------------------------
+task_analyze_schema:
+  description: >
+    Read and analyze the DDL schema file located at **{schema_file}**. 
+
+    The schema defines a hierarchical set of tables (Root -> Child -> Grandchild), 
+    including their Primary Keys (PK), Foreign Keys (FK), and associated sequences.
+
+    Review the user instructions: **{instruction}**.
+
+    Your goal is to extract table dependencies, determine the correct order of table generation,
+    identify sequences for IDs, define variables for PKs and FKs, and provide a structured plan
+    for producing synthetic data that maintains referential integrity.
+    Additionally, distinguish between New Data (records to be generated) and Reference Data 
+    (existing records that should only be referenced without insertion).
+    Save the result to 'output/data_schema_scientist.txt'
+
+  expected_output: >
+    A detailed, structured plan for synthetic data generation, explicitly listing:
+    1. Each table name and its PK field.
+    2. For each table, all FK fields and their referenced tables.
+    3. Sequence mappings for ID fields, including suggested variable names.
+    4. The correct sequential order of tables to respect all dependencies.
+    5. A description of how to generate synthetic data for each table in order, maintaining referential integrity.
+    6. Description of the type of database (SQL Server, Oracle, Postgres, MySQL, etc.), e.g., the script is for SQL Server.
+    7. A description of the tables (name, fields, field types, and all necessary info).
+    8. Notes on constraints or considerations derived from user instructions.
+    9. Identification of which tables/records are New Data versus Reference Data, including:
+       - A strategy to retrieve or reference existing data when needed.
+       - If reference data is included in the user instructions, follow the user's specification strictly.
+       - If reference data is not provided in the instructions, define a default method to select or reference appropriate existing records.
+    10. Don't produce the SQL script directly; only instructions to be used by other agents.
+    11. Save the result to 'output/data_schema_scientist.txt'
+
+  agent: data_schema_scientist
+
+# ----------------------------------------------------------------------------------
+# TASK 2: task_generate_sql_template
+# ----------------------------------------------------------------------------------
+task_generate_sql_template:
+  description: |
+    Receive the Structured Action Plan from the Data Schema Scientist (Task 1 output). 
+    Your goal is to generate one SINGLE, fully executable SQL code block (for the specified SQL Server environment) 
+    that demonstrates the process of inserting ONE complete chain of records (e.g., 1 School, 1 Classroom, 1 Student, 1 Activity). 
+    This output will serve as the definitive syntactic blueprint for the Jinja2 conversion step.
+    
+    KEY SYNTAX RULES:
+      1. Declare all necessary SQL variables (@) at the start of the script.
+      2. For all **Primary Keys (PKs)** of new records, use the associated SQL Sequence: `SET @pk_var = NEXT VALUE FOR SequenceName;`.
+      3. For all **Foreign Keys (FKs)** derived from a parent *just inserted*, use the parent's SQL variable.
+      4. For **Reference Data** (where the plan requires referencing existing data, e.g., an existing teacher ID), 
+         you MUST use the **SQL CURSOR syntax** to retrieve the required FK value. Since this is a single-row model, 
+         use the full CURSOR logic (`DECLARE CURSOR`, `OPEN`, `FETCH NEXT INTO @fk_var`, `CLOSE`, `DEALLOCATE`) to 
+         demonstrate the *intent to iterate or sample* existing data, retrieving the first suitable ID.
+      5. Use static mock values (e.g., 'Mock Value', GETDATE()) for all non-key data fields.
+      6. Ensure the entire script is ordered correctly based on dependency (Parent before Child).
+      7. DO NOT include any iteration commands (WHILE, LOOP, GOTO) or Jinja2 syntax.
+
+  expected_output: |
+    A complete, ready-to-run SQL script block containing: 
+    a) All necessary DECLARE statements. 
+    b) All required SET statements using NEXT VALUE FOR (for new PKs). 
+    c) The complete **CURSOR logic block** (DECLARE, OPEN, FETCH, CLOSE, DEALLOCATE) for the retrieval of ALL reference FKs; 
+       do not limit to load only one item
+    d) The final INSERT INTO statements for one chain of records. This output provides the definitive syntactic model 
+       for key and reference management
+    e) Save the result to 'output/data_script_planner.txt'
+
+  agent: data_script_planner
+
+# ----------------------------------------------------------------------------------
+# TASK 3: task_inject_templates
+# ----------------------------------------------------------------------------------
+task_inject_templates:
+  description: |
+    Receive the **Structured Action Plan** (output of Agent 1) and the **Executable SQL Model** (output of Agent 2).
+    
+    Your task is to produce a structured output composed of two clearly defined sections that serves as the 
+    definitive execution blueprint for the Python Data Generation Expert.
+    
+    This process has two specific objectives:
+    
+    1. **Data Field Templating:** Convert the static mock data values in the SQL model into clean, modular Jinja2 placeholders.
+       - **RULE:** Only static string or numeric mock values (e.g., 'Mock Value', 10, GETDATE()) must be replaced 
+         with pure Jinja2 placeholders (e.g., `{{ field_name }}`).
+       - **CRITICAL EXCEPTION:** The entire SQL logic for key management (`DECLARE`, `SET @var = NEXT VALUE FOR...`), 
+         Foreign Key variables (`@fk_var`), and the **entire CURSOR block** must be copied LITERALLY into the template 
+         structure without modification or replacement by Jinja2 placeholders.
+       
+    2. **Iteration Logic Definition:** Analyze the hierarchical generation counts provided in the **Structured Action Plan 
+       (Agent 1)** and formalize this 1:N logic.
+    
+    3. **Final Assembly:** Break the single SQL block into separate templates per table, embed the iteration logic, 
+       and assemble the final structured output.
+
+  expected_output: |
+    A structured output containing two main, clearly labeled **sections**:
+      1. 'ITERATION_LOGIC': A list defining the hierarchical generation counts 
+         (e.g., [{'table': 'School', 'count': 1}, {'table': 'Classroom', 'parent': 'School', 'count': 3}, ...]). 
+         This data dictates the N repetitions.
+      2. 'SQL_TEMPLATES': A dictionary where keys are table names and values are the corresponding SQL INSERT statement 
+         templates. These templates must be parameterized to allow the Python Expert to populate the data fields N times. 
+         **The templates MUST retain the original SQL logic (e.g., `NEXT VALUE FOR`, `@var`, `CURSOR` syntax) untouched.**
+         The dictionary MUST have an additional key 'HEADER' with declarations of all global variables 
+         (including reference data declarations) 
+    Save these info to a file: 'output/template_injector.txt'
+
+  agent: template_injector
+
+# ----------------------------------------------------------------------------------
+# TASK 4: task_generate_python_script
+# ----------------------------------------------------------------------------------
+task_generate_python_script:
+  description: >
+    Receive parametrized SQL templates from the template injector. 
+    Generate a Python program that saves a SQL script to file: './output/output.sql'
+    
+    Use only standard Python libraries and CustomTemplateTool (from tools.custom_template_tool import CustomTemplateTool)
+    
+    CustomTemplateTool signature: def fill(self, template: str)
+    
+    IMPORTANT: DO NOT replace placeholders manually - the CustomTemplateTool.fill() method does this automatically.
+    
+    Code snippet example for CustomTemplateTool usage:
+    ```python
+    insert_stm = """
+    INSERT INTO CITY (id,city_name,city_code,residents) 
+    VALUES (@v_city_id,'{{ city_name }}',{{ city_code }},{{ residents }});   
+    """
+    filled_insert_stm = customTemplateTool.fill(insert_stm)
+    ```
+    
+    {feedback}
+
+  expected_output: >
+    A complete Python program that produces a SQL script './output/output.sql'.
+    The generated SQL script must:
+      1. Correctly handle New Data and Reference Data:
+         - For New Data: CustomTemplateTool fills placeholders automatically
+         - For Reference Data: reference existing records, respecting user instructions
+      2. Iterate through repeated INSERT instructions with correct sequence usage and FK assignment. 
+         If a variable is valued with a sequence for a primary key, the same variable must be used 
+         to value the related foreign key
+      3. Generate the final SQL in correct dependency order
+      4. Save the final SQL script without requiring any further modification
+      
+    Python script MUST:
+      1. Use CustomTemplateTool.fill() with ONLY ONE argument per call
+      2. NOT calculate or replace placeholders manually
+      3. Include minimal, necessary comments only
+      4. Be executable as main with no syntax errors
+      
+    Example structure:
+    ```python
+    from tools.custom_template_tool import CustomTemplateTool
+    
+    SQL_TEMPLATES = {
+        "HEADER": "...",
+        "CITY": "...",
+        "PEOPLE": "..."
+    }
+    
+    NUM_CITIES = 3
+    PEOPLE_PER_CITY = 10
+    
+    customTemplateTool = CustomTemplateTool()
+    
+    def generate_sql_script():
+        full_script = []
+        full_script.append(SQL_TEMPLATES["HEADER"])
+        
+        for i in range(1, NUM_CITIES + 1):
+            city_statement = SQL_TEMPLATES["CITY"]
+            filled_city_statement = customTemplateTool.fill(city_statement)
+            full_script.append(filled_city_statement)
+            full_script.append("GO\n")
+            
+            for j in range(1, PEOPLE_PER_CITY + 1):
+                people_statement = SQL_TEMPLATES["PEOPLE"]
+                filled_people_statement = customTemplateTool.fill(people_statement)
+                full_script.append(filled_people_statement)
+                full_script.append("GO\n")
+        
+        return "\n".join(full_script)
+    
+    if __name__ == "__main__":
+        generated_sql = generate_sql_script()
+        with open('./output/output.sql', 'w') as f:
+            f.write(generated_sql)
+        print(f"Generated {generated_sql.count('INSERT')} INSERT statements")
+    ```
+
+  agent: python_data_layer_developer
+
+# ----------------------------------------------------------------------------------
+# TASK 5: task_review_python_code (MODIFIED - Review only, no fixing)
+# ----------------------------------------------------------------------------------
+task_review_python_code:
+  description: >
+    Review the Python code generated by python_data_layer_developer.
+    
+    **YOUR ROLE IS STRICTLY REVIEW ONLY - DO NOT REWRITE OR FIX THE CODE.**
+    
+    Evaluate the code against these critical criteria:
+    
+    1. **CustomTemplateTool Usage:**
+       - Synthetic data MUST be calculated ONLY by customTemplateTool.fill()
+       - ONLY ONE argument should be passed to customTemplateTool.fill()
+       - Example CORRECT: `customTemplateTool.fill(template)`
+       - Example WRONG: `customTemplateTool.fill(template, data)`
+       
+    2. **Tool Usage Frequency:**
+       - The tool should be used for each SQL statement set
+       - Avoid using it only once for the entire script
+       
+    3. **Code Quality:**
+       - Python syntax is correct and executable
+       - No manual placeholder replacement
+       - Proper loop structure for hierarchical data
+       
+    4. **SQL Generation Requirements:**
+       - Code matches requirements from template injector
+       - Correct sequence variable usage
+       - Proper FK assignment from parent variables
+       
+    Generated code to review:
+    {generated_code}
+
+  expected_output: >
+    A structured validation report in JSON format containing:
+    
+    {
+      "is_valid": boolean,  // True if all checks pass, False otherwise
+      "issues_found": [     // List of specific problems identified
+        "Issue description with line number or code reference",
+        ...
+      ],
+      "suggestions": [      // List of recommended fixes for each issue
+        "Specific actionable fix for the issue",
+        ...
+      ],
+      "severity": string    // "pass" | "warning" | "critical"
+    }
+    
+    Severity levels:
+    - "pass": No issues found, code is ready to use
+    - "warning": Minor issues that should be fixed but code might work
+    - "critical": Code will not work correctly, fixes are required
+    
+    Example report:
+    {
+      "is_valid": false,
+      "issues_found": [
+        "Line 45: customTemplateTool.fill() called with 2 arguments (template, data)",
+        "Line 67: Missing loop for PEOPLE table generation",
+        "Line 23: Manual string formatting used instead of CustomTemplateTool"
+      ],
+      "suggestions": [
+        "Change customTemplateTool.fill(template, data) to customTemplateTool.fill(template)",
+        "Add nested loop: for j in range(1, PEOPLE_PER_CITY + 1)",
+        "Remove f-string formatting and use customTemplateTool.fill() instead"
+      ],
+      "severity": "critical"
+    }
+
+  agent: python_data_layer_architect
+
+# ----------------------------------------------------------------------------------
+# TASK 6: task_fix_python_code (NEW - Actually applies fixes)
+# ----------------------------------------------------------------------------------
+task_fix_python_code:
+  description: >
+    Fix the Python code based on the validation report from the Code Review Architect.
+    
+    **ORIGINAL CODE:**
+    {generated_code}
+    
+    **VALIDATION REPORT:**
+    Issues Found: {issues_found}
+    Suggested Fixes: {suggestions}
+    
+    **YOUR TASK:**
+    Apply ONLY the necessary fixes to address the specific issues mentioned in the validation report.
+    
+    **RULES:**
+    1. DO NOT refactor or change code that is working correctly
+    2. Maintain the overall structure and logic
+    3. Make minimal, surgical changes only
+    4. Ensure all fixes address the validation issues
+    
+    **CRITICAL REQUIREMENTS:**
+    1. Synthetic data MUST be calculated ONLY by customTemplateTool.fill()
+    2. ONLY ONE argument to customTemplateTool.fill()
+    3. Use the tool for each SQL statement set, not just once
+    4. Maintain correct loop structure for hierarchical data
+    5. Keep proper sequence variable usage and FK assignment
+
+  expected_output: >
+    A JSON object containing:
+    {
+      "fixed_code": "Complete fixed Python code as string",
+      "changes_applied": [
+        "Description of change 1",
+        "Description of change 2",
+        ...
+      ]
+    }
+    
+    The fixed_code should be immediately executable and address all critical issues from the validation report.
+    The changes_applied list helps track what was modified for debugging purposes.
+
+  agent: python_code_fixer

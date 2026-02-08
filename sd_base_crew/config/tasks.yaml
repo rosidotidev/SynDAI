@@ -1,0 +1,26 @@
+# tasks.yaml
+
+# 1. Analisi Iniziale dello Schema
+task_analyze_model:
+  description: >
+    Analyze the relational data model specified in the SQL/schema file located at **{schema_file}**. 
+    
+    The file defines the Root, Child 1, and Child 2 tables (e.g., Author, Book, Book Review), 
+    including their respective Primary Keys (PK) and Foreign Keys (FK). 
+    
+    Additionally, review the specific generation constraints provided by the user: **{instruction}**. 
+    
+    Your goal is to formalize the hierarchical dependency and confirm the required generation sequence 
+    (Root -> Child 1 -> Child 2) while providing a meticulous description of the fields and relations 
+    found in the schema file.
+
+  expected_output: >
+    A detailed, structured summary of the generation plan. This summary MUST explicitly list:
+    1. The name of the Root Table (e.g., 'Author') and its PK field (e.g., 'author_id').
+    2. for all other tables: The name of Table (e.g., 'Book'), its PK (e.g., 'book_id'), and its FK field (e.g., 'author_id').
+    3. A confirmation of the sequential generation order required to maintain referential integrity.
+    4. Generate sql script that assign required IDs to variables using the related sequence; that variables have to be used in 
+       order that can be used neither as id and neither as foreign key
+    5. Generate the insert statements with the variables at point '4.' and mock value for other fields; all required statements needs to be generated
+    6. Don't finish the work using produced statements as example, you HAVE to produce all required script; in case of high number of statements consider using loop
+  agent: schema_analyzer

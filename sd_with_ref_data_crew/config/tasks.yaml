@@ -1,0 +1,198 @@
+# tasks.yaml
+
+task_analyze_schema:
+  description: >
+    Read and analyze the DDL schema file located at **{schema_file}**. 
+
+    The schema defines a hierarchical set of tables (Root -> Child -> Grandchild), 
+    including their Primary Keys (PK), Foreign Keys (FK), and associated sequences.
+
+    Review the user instructions: **{instruction}**.
+
+    Your goal is to extract table dependencies, determine the correct order of table generation,
+    identify sequences for IDs, define variables for PKs and FKs, and provide a structured plan
+    for producing synthetic data that maintains referential integrity.
+    Additionally, distinguish between New Data (records to be generated) and Reference Data 
+    (existing records that should only be referenced without insertion).
+    Save the result on 'output/data_schema_scientist.txt'
+
+  expected_output: >
+    A detailed, structured plan for synthetic data generation, explicitly listing:
+    1. Each table name and its PK field.
+    2. For each table, all FK fields and their referenced tables.
+    3. Sequence mappings for ID fields, including suggested variable names.
+    4. The correct sequential order of tables to respect all dependencies.
+    5. A description of how to generate synthetic data for each table in order, maintaining referential integrity.
+    6. Description of the type of database (Sql Server, Oracle, Postgres, MySql etc etc), e.g., the script is for Sql Server.
+    7. A description of the tables (name, fields, field types, and all necessary info).
+    8. Notes on constraints or considerations derived from user instructions.
+    9. Identification of which tables/records are New Data versus Reference Data, including:
+       - A strategy to retrieve or reference existing data when needed.
+       - If reference data is included in the user instructions, follow the user's specification strictly.
+       - If reference data is not provided in the instructions, define a default method to select or reference appropriate existing records.
+    10. Don't produce directly the SQL script; only instructions to be used by other agents.
+    11. Save the result on 'output/data_schema_scientist.txt'
+
+  agent: data_schema_scientist
+
+# ----------------------------------------------------------------------------------
+# TASK 2: task_generate_sql_template
+# ----------------------------------------------------------------------------------
+task_generate_sql_template:
+  description: |
+    Receive the Structured Action Plan from the Data Schema Scientist (Task 1 output). 
+    Your goal is to generate one SINGLE, fully executable SQL code block (for the specified SQL Server environment) that demonstrates the process of inserting ONE complete chain of records (e.g., 1 School, 1 Classroom, 1 Student, 1 Activity). This output will serve as the definitive syntactic blueprint for the Jinja2 conversion step.
+    
+    KEY SYNTAX RULES:
+      1. Declare all necessary SQL variables (@) at the start of the script.
+      2. For all **Primary Keys (PKs)** of new records, use the associated SQL Sequence: `SET @pk_var = NEXT VALUE FOR SequenceName;`.
+      3. For all **Foreign Keys (FKs)** derived from a parent *just inserted*, use the parent's SQL variable.
+      4. For **Reference Data** (where the plan requires referencing existing data, e.g., an existing teacher ID), you MUST use the **SQL CURSOR syntax** to retrieve the required FK value. Since this is a single-row model, use the full CURSOR logic (`DECLARE CURSOR`, `OPEN`, `FETCH NEXT INTO @fk_var`, `CLOSE`, `DEALLOCATE`) to demonstrate the *intent to iterate or sample* existing data, retrieving the first suitable ID.
+      5. Use static mock values (e.g., 'Mock Value', GETDATE()) for all non-key data fields.
+      6. Ensure the entire script is ordered correctly based on dependency (Parent before Child).
+      7. DO NOT include any iteration commands (WHILE, LOOP, GOTO) or Jinja2 syntax.
+
+  expected_output: |
+    A complete, ready-to-run SQL script block containing: 
+    a) All necessary DECLARE statements. 
+    b) All required SET statements using NEXT VALUE FOR (for new PKs). 
+    c) The complete **CURSOR logic block** (DECLARE, OPEN, FETCH, CLOSE, DEALLOCATE) for the retrieval of ALL reference FKs; do not limit to load only one item
+    d) The final INSERT INTO statements for one chain of records. This output provides the definitive syntactic model for key and reference management
+    e) Save the result on 'output/data_script_planner.txt'
+  agent: data_script_planner
+
+# ----------------------------------------------------------------------------------
+# TASK 3: Inject Jinja2 Templates and Extract Iteration Logic
+# ----------------------------------------------------------------------------------
+task_inject_templates:
+  description: |
+    Receive the **Structured Action Plan** (output of Agent 1) and the **Executable SQL Model** (output of Agent 2).
+    
+    Your task is to produce a structured output composed of two clearly defined sections that serves as the definitive execution blueprint for the Python Data Generation Expert.
+    
+    This process has two specific, superficial objectives:
+    
+    1. **Data Field Templating:** Convert the static mock data values in the SQL model into clean, modular Jinja2 placeholders.
+       - **RULE:** Only static string or numeric mock values (e.g., 'Mock Value', 10, GETDATE()) must be replaced with pure Jinja2 placeholders (e.g., `{{ field_name }}`).
+       - **CRITICAL EXCEPTION:** The entire SQL logic for key management (`DECLARE`, `SET @var = NEXT VALUE FOR...`), Foreign Key variables (`@fk_var`), and the **entire CURSOR block** must be copied LITERALLY into the template structure without modification or replacement by Jinja2 placeholders.
+       
+    2. **Iteration Logic Definition:** Analyze the hierarchical generation counts provided in the **Structured Action Plan (Agent 1)** and formalize this 1:N logic.
+    
+    3. **Final Assembly:** Break the single SQL block into separate templates per table, embed the iteration logic, and assemble the final structured output.
+
+  expected_output: |
+    A structured output containing two main, clearly labeled **sections**:
+      1. 'ITERATION_LOGIC': A list defining the hierarchical generation counts (e.g., [{'table': 'School', 'count': 1}, {'table': 'Classroom', 'parent': 'School', 'count': 3}, ...]). This data dictates the N repetitions.
+      2. 'SQL_TEMPLATES': A dictionary where keys are table names and values are the corresponding SQL INSERT statement templates. These templates must be parameterized to allow the Python Expert to populate the data fields N times. **The templates MUST retain the original SQL logic (e.g., `NEXT VALUE FOR`, `@var`, `CURSOR` syntax) untouched.**
+         The dictionary MUST have an additional key 'HEADER' with declarations of all global variables (including reference data declarations) 
+    Save these info to a file: 'output/template_injector.txt'
+  agent: template_injector
+
+# ----------------------------------------------------------------------------------
+# TASK 4: Generate Final Python Script
+# ----------------------------------------------------------------------------------
+task_generate_final_python_script:
+  description: >
+    Receive parametrized SQL templates from the template injector. 
+    Generate Python program; the python code has to save a sql script to a file: './output.sql'
+    Uses only standard Python libraries and CustomTemplateTool (from tools.custom_template_tool import CustomTemplateTool)
+    this is the signature of the fill method: def fill(self, template: str); 
+    this a cde snippet,how ypu can see, YOU MUST NOT  REPLACE placeholders, the tool
+    does it. CONSIDER THIS CODE SNIPPET!
+    *** START CODE SNIPPET FOR customTemplateTool USAGE ***
+      insert_stm="""
+      INSERT INTO CITY (id,city_name,city_code,residents) VALUES (@v_city_id,'{{ city_name }}',{{ city_code }},{{ residents }});   
+      """
+      filled_insert_stm=customTemplateTool.fill(insert_stm)
+    *** END CODE SNIPPET FOR customTemplateTool USAGE ***
+  expected_output: >
+    - A complete Python program, this python code produces a SQL script './output.sql'.
+      The generated SQL script must:
+        1. Correctly handle New Data and Reference Data:
+           - For New Data: CustomTemplateTool is able to fill placeholders, DON'T REPLACE placeholders in the code
+           - For Reference Data: reference existing records, respecting any instructions provided by the user
+        2. Iterate through any repeated INSERT instructions and apply correct sequence usage and FK assignment. If a variable is valued with a sequence for a primary key the 
+           same variable has to be used to value the related foreign key
+    - Furthermore the python script MUST 
+        1. Generate the final SQL in correct dependency order.
+        2. Save the final SQL script without requiring any further modification or manual steps.
+        3. Here below an example for a schema with tables CITY and PEOPLE, Notice that placeholders MUST NOT be calculated.
+              #### START PYTHON SAMPLE CODE ###
+              from tools.custom_template_tool import CustomTemplateTool
+              # SQL templates for each block
+              SQL_TEMPLATES = {
+                  "HEADER": """
+              -- Declaring all necessary variables
+              DECLARE @v_city_id INT;
+              DECLARE @v_people_id INT;
+              """,
+
+                  "CITY": """
+              SET @v_city_id = NEXT VALUE FOR CityID_Sequence;
+              INSERT INTO CITY (id,city_name,city_code,residents) VALUES (@v_city_id,'{{ city_name }}',{{ city_code }},{{ residents }});
+              """,
+                  "PEOPLE": """
+              SET @v_people_id = NEXT VALUE FOR PeopleID_Sequence;
+              INSERT INTO PEOPLE (id,id_city,first_name,last_name,age)
+              VALUES (@v_people_id,@v_city_id,'{{ first_name }}','{{ last_name }}',{{ age }});
+              """
+              }
+              NUM_CITIES = 3
+              PEOPLE_PER_CITY = 10
+              customTemplateTool = CustomTemplateTool()
+              def generate_sql_script():
+                  full_script = []
+                  full_script.append(SQL_TEMPLATES["HEADER"])
+                  # Loop 1: CITY Generation (Outer Loop)
+                  for i in range(1, NUM_CITIES + 1):
+                      city_statement = SQL_TEMPLATES["CITY"]
+                      # Invoke the fill function WITH ONLY AN ARGUMENT!
+                      # It is able to replace placeholders
+                      filled_city_statement = customTemplateTool.fill(city_statement)
+                      full_script.append(filled_city_statement)
+                      full_script.append("GO\n")
+                      # Loop 2: PEOPLE Generation (Nested Loop)
+                      for j in range(1, PEOPLE_PER_CITY + 1):
+                          # 2. Fill the PEOPLE template
+                          people_statement = SQL_TEMPLATES["PEOPLE"]
+                          # Invoke the fill function WITH ONLY AN ARGUMENT!
+                          # It is able to replace placeholders
+                          filled_people_statement = customTemplateTool.fill(people_statement)
+                          full_script.append(filled_people_statement)
+                          full_script.append("GO\n")
+
+                  return "\n".join(full_script)
+              if __name__ == "__main__":
+                  generated_sql = generate_sql_script()
+                  print(generated_sql)
+        #### END PYTHON SAMPLE CODE ###
+    
+      Python code can use loop statements, Generated Sql scripts don't. 
+      Generated SQL script MUST include a list of INSERT statements
+
+    - A written description summarizing how many INSERT statements were generated for each table, 
+      including which were New Data and which were Reference Data. 
+
+  agent: python_data_layer_developer
+
+# ----------------------------------------------------------------------------------
+# TASK 5: Review Generate Final Python Script
+# ----------------------------------------------------------------------------------
+task_review_and_save_final_python_script:
+  description: >
+    Receive python code from python_data_layer_developer review the code applying these rules. 
+    If it doesn't meet the rules apply corrections, otherwise don't apply corrections.
+    Implement minimal, targeted changes avoiding drastic refactoring.
+    Rules:
+    1) synthetic data MUST be calculated ONLY by customTemplateTool.fill
+    2) Only one argument is passed to customTemplateTool.fill; eg: customTemplateTool.fill(x) is ok, customTemplateTool.fill(x,y) isn't
+    3) Every time it has to fill a set of SQL statements use it, avoid to use it only one time passing all the script
+  expected_output: >
+    - A complete Python program written on './output/synt_python_generator.py'
+    - If the file already exists overwrite it
+    - Python code has to include minimal comments, not too much
+    - Python code can be executed as a main and with no syntax errors
+    - Python code has to produce a sql script to be written on './output.sql'
+
+  agent: python_data_layer_architect
+
